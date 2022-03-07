@@ -1,0 +1,28 @@
+#!/bin/sh -f
+
+save_dir=`pwd`
+
+shapelib_home=../../ourex_zips/shapelib-1.5.0
+
+#verbose=-verbose
+
+/bin/mkdir -p src include
+
+#///////////////////////////////////////////
+#///////////////////////////////////////////
+#///////////////////////////////////////////
+find ./src -name '*.c' -exec /bin/rm -f {} \;
+find ./src -name '*.h' -exec /bin/rm -f {} \;
+find ./include -name '*.h' -exec /bin/rm -f {} \;
+#///////////////////////////////////////////
+#///////////////////////////////////////////
+#///////////////////////////////////////////
+
+/bin/cp ${shapelib_home}/shapefil.h ./include/ourex_shapefil.h
+/bin/cp ${shapelib_home}/shapefil.h ./src/.
+
+items="shpopen dbfopen safileio shptree sbnsearch"
+for item in ${items} ; do
+  /bin/cp ${shapelib_home}/${item}.c ./src/.    
+done    
+

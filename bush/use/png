@@ -1,0 +1,64 @@
+# Copyright (C) 2010, Guy Barrand. All rights reserved.
+# See the file bush.license for terms.
+
+# NOTE : png uses zlib.
+
+if [ "${use_png}" = "yes" ] ; then
+if [ "${build_use_not_our_png}" = "yes" ] ; then
+  use_sys_png=yes
+  use_our_png=no
+else
+  use_sys_png=no
+  use_our_png=yes
+fi
+fi
+
+if [ "${use_sys_png}" = "yes" ] ; then
+  if [ `uname` = Darwin ] ; then
+    if [ -e /opt/local/include/png.h ] ; then
+      ccflags="${ccflags} -I/opt/local/include"
+      cppflags="${cppflags} -I/opt/local/include"
+      if [ "${use_archive}" = "yes" ] ; then
+        libs="${libs} /opt/local/lib/libpng.a"
+      else	
+        libs="${libs} /opt/local/lib/libpng.dylib"
+      fi	
+    else
+      echo "bush/use/png : png.h not found."
+      exit
+    fi
+  else
+    if [ -e /usr/include/png.h ] ; then
+      ccflags="${ccflags} -I/usr/include"
+      cppflags="${cppflags} -I/usr/include"
+      libs="${libs} -lpng"
+    else
+      echo "bush/use/png : png.h not found."
+      exit
+    fi
+  fi
+  ccflags="${ccflags} -DEXLIB_USE_NATIVE_PNG"
+  cppflags="${cppflags} -DEXLIB_USE_NATIVE_PNG"
+fi
+
+if [ "${use_our_png}" = "yes" ] ; then
+  if [ `uname` = "Linux" ] ; then
+    # for 64 bits processor it seems that we need the below :
+    if [ `uname -m` = "x86_64" ] ; then
+      ccflags="${ccflags} -DPNG_NO_MMX_CODE"
+      cppflags="${cppflags} -DPNG_NO_MMX_CODE"
+    fi
+  fi
+
+  if [ "${ourex_home}" = "" ] ; then
+    echo 'bush/use/png : variable ourex_home not defined.';exit
+  fi
+  png_home=${ourex_home}/png
+
+  ccflags="${ccflags} -I${png_home}/png"
+  cppflags="${cppflags} -I${png_home}/png"
+
+  ourex_pack_name=png
+  . ${bush_home}/use/ourex_use
+fi
+

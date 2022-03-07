@@ -1,0 +1,67 @@
+#!/bin/sh -f
+
+if [ $# -ne 1 ] ; then
+  echo 'one argument expected.'
+  exit
+fi
+
+binary="$1"
+#echo ${binary}
+
+dir_name=`dirname ${binary}`
+base_name=`basename ${binary}`
+
+suffix=`echo ${base_name} | sed 's:.*\.::'`
+if [ "${suffix}" = "${base_name}" ] ; then
+  echo 'no suffix.'
+  exit
+fi
+
+#echo ${suffix}
+#exit
+
+name=`echo ${base_name} | sed -e "s:\.${suffix}::g"`
+
+xxd -i ${binary} > ./tmp_0
+
+charn=`wc -c ${binary} | awk '{print $1;}'`
+
+file="${name}_${suffix}"
+
+path="${file}"
+
+cat > ${path} << file_begin
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file inlib.license for terms.
+
+#ifndef inlib_font_${file}
+#define inlib_font_${file}
+
+namespace inlib {
+namespace font {
+
+inline const unsigned char* ${file}(unsigned int& a_len) {
+  a_len = ${charn};
+  static const unsigned char s_data[] = {
+file_begin
+
+#cat ./tmp_0 >> ${path}
+tail -n +2 ./tmp_0 > ./tmp_1
+
+linen=`wc -l ./tmp_1 | awk '{print $1;}'`
+let linen=${linen}-2
+
+head -n ${linen} ./tmp_1 >> ${path}
+
+cat >> ${path} << file_end
+};
+  return s_data;
+}
+
+}}
+
+#endif
+file_end
+
+/bin/rm -f ./tmp_0 ./tmp_1
+

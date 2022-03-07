@@ -1,0 +1,18 @@
+#!/bin/sh -f
+
+flags=
+flags="${flags} --prefix=/usr/local/gcc/10.1.0"
+
+#flags="${flags} --program-suffix=-10.1"
+
+flags="${flags} --with-gmp=/usr"
+flags="${flags} --with-mpfr=/usr"
+flags="${flags} --with-mpc=/usr/local/mpc/1.1.0"
+flags="${flags} --with-isl=/usr/local/isl/0.18"
+
+flags="${flags} --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu"
+flags="${flags} --enable-languages=c,c++,fortran"
+flags="${flags} --enable-checking=release"
+flags="${flags} --disable-multilib"
+
+./configure -v ${flags}

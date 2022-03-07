@@ -1,0 +1,160 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+#ifndef exlib_Cocoa_GLView_hm
+#define exlib_Cocoa_GLView_hm
+
+#include <Cocoa/Cocoa.h>
+
+#include <inlib/sg/gui_viewer>
+
+@interface exlib_Cocoa_GLView : NSOpenGLView {
+  inlib::sg::gui_viewer* m_viewer;
+  NSCursor* m_cursor_default;
+  NSCursor* m_cursor_target;
+  NSCursor* m_cursor_current;
+}
+- (id)init:(NSRect)a_rect viewer:(inlib::sg::gui_viewer*)a_viewer;
+- (void)dealloc;
+- (void)drawRect:(NSRect)a_rect;
+- (void)resetCursorRects;
+- (void)set_cursor:(inlib::sg::cursor_shape)a_cursor;
+@end
+@implementation exlib_Cocoa_GLView
+- (id)init:(NSRect)a_rect viewer:(inlib::sg::gui_viewer*)a_viewer {
+  NSOpenGLPixelFormatAttribute att[32];
+  int i = 0;
+  att[i++] = NSOpenGLPFADoubleBuffer;
+  att[i++] = NSOpenGLPFAAccelerated;
+  att[i++] = NSOpenGLPFAAccumSize;
+  att[i++] = (NSOpenGLPixelFormatAttribute)32;
+  att[i++] = NSOpenGLPFAColorSize;
+  att[i++] = (NSOpenGLPixelFormatAttribute)32;
+  att[i++] = NSOpenGLPFADepthSize;
+  att[i++] = (NSOpenGLPixelFormatAttribute)32;
+
+  // Antialiasing :
+  att[i++] = NSOpenGLPFASampleBuffers;
+  att[i++] = 1;
+  att[i++] = NSOpenGLPFASamples;
+  att[i++] = 2;
+  att[i++] = NSOpenGLPFANoRecovery;
+
+  att[i] = (NSOpenGLPixelFormatAttribute)0;
+  NSOpenGLPixelFormat *pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:att];
+
+  if(self = [super initWithFrame:a_rect pixelFormat:pixelFormat]) {
+    // flush buffer only during the vertical retrace of the monitor
+    const GLint vals[1] = {1};
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 1014
+    [[self openGLContext] setValues:vals forParameter:NSOpenGLCPSwapInterval];
+#else
+    [[self openGLContext] setValues:vals forParameter:NSOpenGLContextParameterSwapInterval];
+#endif
+  }
+
+  [pixelFormat release];
+
+  NSTrackingAreaOptions _options = NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect;
+  NSTrackingArea* tracking_area =
+    [[NSTrackingArea alloc] initWithRect:NSZeroRect
+				 options:_options
+				   owner:self userInfo:nil];
+  [self addTrackingArea:tracking_area];
+
+  m_viewer = a_viewer;
+  m_cursor_default = [NSCursor arrowCursor];
+  m_cursor_target = [NSCursor crosshairCursor];
+  m_cursor_current = m_cursor_default;
+
+  return self;
+}
+
+- (void)dealloc {[super dealloc];}
+
+- (void)drawRect:(NSRect)a_rect {
+  if(!m_viewer) return;
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 101500
+  int w = a_rect.size.width;
+  int h = a_rect.size.height;
+#else
+  NSRect backing_rect = [self convertRectToBacking:a_rect];
+  int w  = (int)(backing_rect.size.width);
+  int h = (int)(backing_rect.size.height);
+#endif
+  m_viewer->set_size(w,h);
+  m_viewer->win_render();
+}
+
+- (void)mouseDown:(NSEvent*)a_event {
+  [super mouseDown:a_event];
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 101500
+  NSPoint p = [a_event locationInWindow];
+#else
+  NSPoint _p = [a_event locationInWindow];
+  NSPoint p = [self convertPointToBacking:_p];
+#endif
+  //(0,0) = bottom left of window.
+  //NSLog(@"debug : exlib_Cocoa_GLView::mouseDown %g %g",p.x,p.y);
+  if(!m_viewer) return;
+  if(m_viewer->touch_down(p.x,p.y)) m_viewer->win_render();
+}
+
+- (void)mouseUp:(NSEvent*)a_event {
+  [super mouseUp:a_event];
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 101500
+  NSPoint p = [a_event locationInWindow];
+#else
+  NSPoint _p = [a_event locationInWindow];
+  NSPoint p = [self convertPointToBacking:_p];
+#endif
+  //(0,0) = bottom left of window.
+  //NSLog(@"debug : exlib_Cocoa_GLView::mouseUp %g %g",p.x,p.y);
+  if(!m_viewer) return;
+  m_viewer->add_work_check_arm_buttons();
+  if(m_viewer->touch_up(p.x,p.y)) m_viewer->win_render();
+}
+
+- (void)mouseDragged:(NSEvent*)a_event {
+  [super mouseDragged:a_event];
+#if MAC_OS_X_VERSION_MAX_ALLOWED < 101500
+  NSPoint p = [a_event locationInWindow];
+#else
+  NSPoint _p = [a_event locationInWindow];
+  NSPoint p = [self convertPointToBacking:_p];
+#endif
+  //(0,0) = bottom left of window.
+  //NSLog(@"debug : exlib_Cocoa_GLView::mouseDragged %g %g",p.x,p.y);
+  if(!m_viewer) return;
+  if(m_viewer->touch_move(p.x,p.y)) m_viewer->win_render();
+}
+
+- (void)resetCursorRects {
+  [super resetCursorRects];
+  //NSLog(@"debug : resetCursorRects");
+  [self discardCursorRects];
+  [self addCursorRect:self.bounds cursor:m_cursor_default];
+  [self addCursorRect:self.bounds cursor:m_cursor_target];
+  [m_cursor_current set];
+}
+
+- (void)mouseEntered:(NSEvent*)a_event {
+  [super mouseEntered:a_event];
+  [m_cursor_current set];
+}
+
+- (void)set_cursor:(inlib::sg::cursor_shape)a_cursor {
+  if(a_cursor==inlib::sg::cursor_default) {
+    [m_cursor_default set];
+    m_cursor_current = m_cursor_default;
+  } else if(a_cursor==inlib::sg::cursor_target) {
+    [m_cursor_target set];
+    m_cursor_current = m_cursor_target;
+  }
+}
+
+@end
+
+//exlib_build_use Cocoa AGL inlib
+
+#endif

@@ -1,0 +1,33 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+// common code to exlib/[X11,Windows]/[gui_viewer,gui_plotter].
+
+  {std::string EXLIB_RES_DIR;
+   if(inlib::get_env("EXLIB_RES_DIR",EXLIB_RES_DIR) && inlib::dir::is_a(EXLIB_RES_DIR)) {
+      m_res_dir = EXLIB_RES_DIR;
+   } else {
+      m_res_dir = ".";
+     {std::string path = "."+inlib::sep()+"res";
+      if(inlib::dir::is_a(path)) m_res_dir = path;}
+     {std::string path = ".."+inlib::sep()+"res";
+      if(inlib::dir::is_a(path)) m_res_dir = path;}
+   }}
+
+    m_out_dir = ".";
+
+    inlib::env_append_path("EXLIB_FONT_PATH",m_res_dir);
+
+    m_params.set_gui_Apple_black_on_white();
+    m_params.m_image_buttons = true;
+    m_params.m_corner_radius = 0.2F; //percent of button height.
+    m_params.m_list_item_layout = inlib::sg::s_layout_text_at_left_of_image();
+
+    m_image_readers.add_reader(inlib::file::s_format_jpeg(),new exlib::jpeg::reader());
+    m_image_readers.add_reader(inlib::file::s_format_png(),new exlib::png::reader());
+
+    m_styles.add_colormap("default",inlib::sg::style_default_colormap());
+    m_styles.add_colormap("ROOT",inlib::sg::style_ROOT_colormap());
+
+    m_popup_cbks.add(new inlib::cbk::background_popup(*this));
+    m_popup_cbks.add(new inlib::cbk::image_popup(*this,inlib::sg::base_tex::s_class()));

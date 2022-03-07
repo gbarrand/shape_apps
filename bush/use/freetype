@@ -1,0 +1,66 @@
+# Copyright (C) 2010, Guy Barrand. All rights reserved.
+# See the file bush.license for terms.
+
+if [ "${use_freetype}" = "yes" ] ; then
+if [ "${build_use_not_our_freetype}" = "yes" ] ; then
+  use_sys_freetype=yes
+  use_our_freetype=no
+else
+  use_sys_freetype=no
+  use_our_freetype=yes
+fi
+fi
+
+if [ "${use_sys_freetype}" = "yes" ] ; then
+  if [ `uname` = Darwin ] ; then
+    if [ -d /opt/local/include/freetype2  ] ; then
+      cppflags="${cppflags} -I/opt/local/include/freetype2"
+      if [ "${use_archive}" = "yes" ] ; then
+        libs="${libs} /opt/local/lib/libfreetype.a"
+        libs="${libs} /opt/local/lib/libbz2.a"
+        libs="${libs} /opt/local/lib/libbrotlidec-static.a"
+        libs="${libs} /opt/local/lib/libbrotlicommon-static.a"
+      else	
+        libs="${libs} /opt/local/lib/libfreetype.dylib"
+      fi
+    else
+      echo "bush/use/freetype : freetype2 not found."
+      exit
+    fi
+  elif [ -d /usr/include/x86_64-linux-gnu/freetype2 ] ; then  #ostackess.
+    cppflags="${cppflags} -I/usr/include/freetype2"
+    if [ "${use_archive}" = "yes" ] ; then
+      libs="${libs} /usr/lib/x86_64-linux-gnu/libfreetype.a"
+    else	
+      libs="${libs} /usr/lib/x86_64-linux-gnu/libfreetype.so"
+    fi	
+  elif [ -d /usr/include/freetype2 ] ; then  #ostackc.
+    cppflags="${cppflags} -I/usr/include/freetype2"
+    if [ "${use_archive}" = "yes" ] ; then
+      if [ -f /usr/lib64/libfreetype.a ] ; then
+        libs="${libs} /usr/lib64/libfreetype.a"
+      else	
+        echo "bush/use/freetype : use_archive requested but /usr/lib64/libfreetype.a not found, use .so"
+        libs="${libs} /usr/lib64/libfreetype.so"
+      fi	
+    else	
+      libs="${libs} /usr/lib64/libfreetype.so"
+    fi	
+  else
+    echo "bush/use/freetype : freetype2 not found."
+    exit
+  fi
+  ccflags="${ccflags} -DEXLIB_USE_NATIVE_FREETYPE"
+  cppflags="${cppflags} -DEXLIB_USE_NATIVE_FREETYPE"
+fi
+
+if [ "${use_our_freetype}" = "yes" ] ; then
+  if [ "${ourex_home}" = "" ] ; then
+    echo 'bush/use/freetype : variable ourex_home not defined.';exit
+  fi
+  freetype_home=${ourex_home}/freetype
+
+  ourex_pack_name=freetype
+  . ${bush_home}/use/ourex_use
+fi
+

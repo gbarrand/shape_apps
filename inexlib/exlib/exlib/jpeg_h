@@ -1,0 +1,25 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+#ifndef exlib_jpeg_h
+#define exlib_jpeg_h
+
+#include <stdio.h> //FILE,size_t
+
+#ifdef __cplusplus
+extern "C" { //Needed on Windows.
+#endif
+
+#ifdef EXLIB_USE_NATIVE_JPEG
+#include <jpeglib.h>
+#else
+#include <ourex_jpeglib.h> //enforce ourex jpeg
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+//exlib_build_use jpeg
+
+#endif

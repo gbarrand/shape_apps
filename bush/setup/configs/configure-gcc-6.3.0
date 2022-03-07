@@ -1,0 +1,14 @@
+#!/bin/sh -f
+
+flags=
+flags="${flags} --prefix=/usr/local/gcc/6.3.0"
+
+flags="${flags} --with-gmp=/usr"
+flags="${flags} --with-mpfr=/usr"
+flags="${flags} --with-mpc=/usr/local/mpc/1.1.0"
+flags="${flags} --with-isl=/usr/local/isl/0.18"
+
+flags="${flags} --enable-checking=release --enable-languages=c,c++,fortran"
+flags="${flags} --disable-multilib"
+
+./configure ${flags}

@@ -1,0 +1,199 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+#ifndef exlib_X11_gui_viewer
+#define exlib_X11_gui_viewer
+
+#include "session"
+
+#include "../sg/pv_holder"
+#include "../sg/GL_action"
+
+#include "../jpeg"
+#include "../png"
+
+#include "gui_dispatcher"
+
+#include <inlib/sg/gui_viewer>
+#include <inlib/cbk/background_popup>
+#include <inlib/cbk/image_popup>
+#include <inlib/path_env>
+
+#include <X11/cursorfont.h>
+
+namespace exlib {
+namespace X11 {
+
+//IMPORTANT : pv_holder must come first.
+
+class gui_viewer : protected sg::pv_holder, public inlib::sg::gui_viewer {
+  typedef exlib::sg::pv_holder parent_pv_holder;
+  typedef inlib::sg::gui_viewer parent;
+public: //exlib::sg::viewer
+  virtual bool set_cursor_shape(inlib::sg::cursor_shape a_shape) {
+    if(!parent::set_cursor_shape(a_shape)) return false;
+    if(a_shape==inlib::sg::cursor_default) {
+      ::XUndefineCursor(m_session.display(),m_win);
+      ::XSync(m_session.display(),False);
+      return true;
+    } else if(a_shape==inlib::sg::cursor_target) {
+      Cursor cursor = ::XCreateFontCursor(m_session.display(),XC_X_cursor);
+      if(!cursor) return false;
+      ::XDefineCursor(m_session.display(),m_win,cursor);
+      ::XSync(m_session.display(),False);
+      return true;
+    } else {
+      return false;
+    }
+  }
+private:
+  virtual unsigned char* get_pixels(unsigned int a_w,unsigned int a_h,bool a_rgbas = true) {
+    if(a_rgbas) {
+      return sg::GL_manager::get_rgbas(a_w,a_h);
+    } else {
+      return sg::GL_manager::get_rgbs(a_w,a_h);
+    }
+  }
+  virtual void win_render() { //ui::win_render()
+    if(!m_ww) return;
+    if(!m_wh) return;
+    if(!m_win) return;
+    if(::glXMakeCurrent(m_session.display(),m_win,m_session.context())==False){
+      m_session.out() << "X11::gui_viewer::win_render :"
+                      << " glXMakeCurrent failed."
+                      << std::endl;
+      return;
+    }
+
+    check_gui_cursor(); //IMPORTANT.
+    if(m_mgr_gra.begin_render(0,0,m_ww,m_wh,
+                              m_clear_color.r(),
+                              m_clear_color.g(),
+                              m_clear_color.b(),
+                              m_clear_color.a())) {
+      sg::GL_action action(m_mgr_gra,m_out,m_ww,m_wh);
+      action.state().m_use_gsto = m_use_gsto;
+      m_sg.render(action);
+      if(!action.end()) { //check that matrices stack are ok.
+        m_out << "exlib::sg::viewer :"
+              << " bad gl_action end."
+              << std::endl;
+      }
+
+      after_render();
+      m_mgr_gra.end_render();
+    }
+
+    ::glXSwapBuffers(m_session.display(),m_win);
+    if(::glXMakeCurrent(m_session.display(),None,NULL)==False){
+      m_session.out() << "X11::gui_viewer::win_render :"
+                      << " glXMakeCurrent(None,NULL) failed."
+                      << std::endl;
+    }
+  }
+
+protected:
+  virtual inlib::sg::node* create_main_menu() {
+    //m_out << "pmx::main::create_home_menu : " << std::endl;
+
+    inlib::sg::list* list = new inlib::sg::list(parent::ttf());
+    set_style(*list);
+
+  //inlib::sg::add_image_item(*this,*list,"export","document_export.jpg",inlib::out::action_main);
+    inlib::sg::add_image_item(*this,*list,"utils","tools.jpg",inlib::sg::action_utils);
+
+    if(!inlib::device::stop_app_button()){
+      inlib::sg::add_image_item(*this,*list,"exit","application_exit.jpg",inlib::sg::action_set_to_exit);
+    }
+
+    return list;
+  }
+public:
+  gui_viewer(session& a_session,
+            int a_x = 0,int a_y = 0,
+            unsigned int a_width = 500,unsigned int a_height = 500,
+            const std::string& a_win_title = "")
+  :parent_pv_holder(a_session.out())
+  ,parent(a_session.out(),parent_pv_holder::gra_mgr(),parent_pv_holder::ttf(),parent_pv_holder::selection(),
+          a_width,a_height)
+  ,m_session(a_session)
+  ,m_win(0)
+  {
+    if(!m_session.display()) return; //throw
+    m_png_writer = exlib::png::write;
+    m_jpeg_writer = exlib::jpeg::write;
+    m_win = m_session.create_window(a_win_title.c_str(),a_x,a_y,a_width,a_height);
+    if(!m_win) return; //throw
+    //m_session.add_dispatcher(new dispatcher(*this));
+    m_session.add_dispatcher(new gui_dispatcher(m_session,m_win,*this));
+
+    inlib::cbk::move_manip::add_cbks(scene(),*this,a_session.out(),scene(),false);
+    scene().up_cbks().add(new inlib::cbk::viewer_popup(*this));
+
+#include "../style_common.icc"
+
+    push_home();
+  }
+  virtual ~gui_viewer() {
+    if(m_win) {
+      m_session.remove_dispatchers_with_window(m_win);
+      m_session.delete_window(m_win);
+      m_session.sync();
+    }
+  }
+public:
+  gui_viewer(const gui_viewer& a_from)
+  :parent_pv_holder(a_from)
+  ,parent(a_from)
+  ,m_session(a_from.m_session)
+  ,m_win(a_from.m_win)
+  ,m_ttf(a_from.m_ttf)
+  ,m_selection(a_from.m_selection)
+  {}
+  gui_viewer& operator=(const gui_viewer& a_from){
+    parent::operator=(a_from);
+    m_win = a_from.m_win;
+    return *this;
+  }
+public:
+  bool has_window() const {return m_win?true:false;} //for SWIG
+
+  X11::session& x11() {return m_session;}
+
+  Window window() const {return m_win;}
+
+  bool show() {
+    if(!m_win) return false;
+    m_session.show_window(m_win);
+    return true;
+  }
+
+  bool steer() {
+    bool is;
+    while(!to_exit()) {
+      if(num_cbks()) {
+        do_works();
+	if(!m_session.event_pending(is)) return false;
+        if(!is) continue;
+      }
+      bool _to_exit;
+      if(!m_session.next_event(_to_exit)) return false;
+      if(_to_exit) set_to_exit();
+    }
+    return true;
+  }
+
+protected:
+  session& m_session;
+  Window m_win;
+  sg::text_freetype m_ttf;
+  inlib::sg::selection m_selection;
+};
+
+}}
+
+//exlib_build_use inlib X11 GLX freetype
+//exlib_build_use png jpeg zlib
+
+#endif
+

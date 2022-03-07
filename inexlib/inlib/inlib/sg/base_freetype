@@ -1,0 +1,225 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file inlib.license for terms.
+
+#ifndef inlib_sg_base_freetype
+#define inlib_sg_base_freetype
+
+#include "base_text"
+#include "gstos"
+#include "sf_string"
+#include "../press_func"
+
+#include <map>
+#include <cstring>
+
+// abstract class to handle freetype text.
+
+namespace inlib {
+namespace sg {
+
+class base_freetype : public base_text, public gstos {
+  INLIB_HEADER(base_freetype,inlib::sg::base_freetype,base_text)
+public:
+  sf_string font;
+  sf_enum<winding_type> front_face; //default is ccw.
+  sf_enum<font_modeling> modeling;
+  typedef unsigned int unichar;
+  typedef std::vector<unichar> uniline;
+  mf_std_vec<unichar> unitext;
+  //mf_string font_dirs; //do we want that ? It is costly. We should have a sg::font node.
+public:
+  virtual const desc_fields& node_desc_fields() const {
+    INLIB_FIELD_DESC_NODE_CLASS(inlib::sg::base_freetype)
+    static const desc_fields s_v(parent::node_desc_fields(),4, //WARNING : take care of count.
+      INLIB_ARG_FIELD_DESC(font),
+      INLIB_ARG_FIELD_DESC(front_face),
+
+      INLIB_ARG_FIELD_DESC_ENUMS_BEG(modeling,3)
+        INLIB_ARG_ENUM(font_outline),
+        INLIB_ARG_ENUM(font_filled),
+        INLIB_ARG_ENUM(font_pixmap)
+      INLIB_ARG_FIELD_DESC_ENUMS_END,
+
+      INLIB_ARG_FIELD_DESC(unitext)
+      //INLIB_ADD_FIELD_DESC(font_dirs)
+    );
+    return s_v;
+  }
+private:
+  void add_fields(){
+    add_field(&font);
+    add_field(&front_face);
+    add_field(&modeling);
+    add_field(&unitext);
+    //add_field(&font_dirs);
+  }
+public:
+  virtual void clear_gstos() {gstos::clean_gstos();}
+public:
+  base_freetype()
+  :parent()
+  ,gstos()
+
+  ,font("")
+  ,front_face(winding_ccw)
+  ,modeling(font_filled)
+  ,unitext()
+  //,font_dirs()
+  
+  ,m_decompress_func(0)
+  {
+    add_fields();
+  }
+  virtual ~base_freetype(){}
+public:
+  base_freetype(const base_freetype& a_from)
+  :parent(a_from)
+  ,gstos(a_from)
+
+  ,font(a_from.font)
+  ,front_face(a_from.front_face)
+  ,modeling(a_from.modeling)
+  ,unitext(a_from.unitext)
+  //,font_dirs(a_from.font_dirs)
+  ,m_fonts(a_from.m_fonts)
+  ,m_finders(a_from.m_finders)
+  ,m_decompress_func(a_from.m_decompress_func)
+  {
+    add_fields();
+  }
+
+  base_freetype& operator=(const base_freetype& a_from){
+    parent::operator=(a_from);
+    gstos::operator=(a_from);
+    font = a_from.font;
+    front_face = a_from.front_face;
+    modeling = a_from.modeling;
+    unitext = a_from.unitext;
+    //font_dirs = a_from.font_dirs;
+    m_fonts = a_from.m_fonts;
+    m_finders = a_from.m_finders;
+    m_decompress_func = a_from.m_decompress_func;
+    return *this;
+  }
+
+public:
+  static base_freetype* create(const base_freetype& a_ttf) {
+    return safe_cast<node,base_freetype>(*(a_ttf.copy()));
+  }
+public:
+  void dump_unitext(std::ostream& a_out) {
+    //unitext.values().size()
+    a_out << "unitext size : " << unitext.values().size() << std::endl;
+    std::vector<uniline>::const_iterator vit;
+    for(vit=unitext.values().begin();vit!=unitext.values().end();++vit) {
+      const uniline& line = *vit;
+      a_out << "beg line :" << std::endl;
+      //a_out << line << std::endl;
+      std::vector<unichar>::const_iterator it;
+      for(it=line.begin();it!=line.end();++it) {
+        a_out << ((unsigned int)*it) << std::endl;
+      }
+      a_out << "end line." << std::endl;
+    }
+  }
+public:  
+  typedef const unsigned char*(*font_getter)(unsigned int&);
+  void add_embedded_font(const std::string& a_name,font_getter a_getter) {
+    unsigned int size;
+    const unsigned char* _buffer = a_getter(size);
+    m_fonts[a_name] = buffer(size,_buffer);
+  }
+  bool add_embedded_compressed_font(std::ostream& a_out,const std::string& a_name,font_getter a_getter) {
+    if(!m_decompress_func) {
+      a_out << "inlib::base_freetype::add_embedded_compressed_font:"
+            << " m_decompress_func is null." << std::endl;
+      return false;
+    }      
+    unsigned int cp_size;
+    const unsigned char* cp_buffer = a_getter(cp_size);
+    size_t usize = 10*cp_size;
+    char* b = new char[usize];
+    unsigned int rsz;
+    if(!m_decompress_func(a_out,cp_size,(const char*)cp_buffer,usize,b,rsz)){
+      a_out << "inlib::base_freetype::add_embedded_compressed_font:"
+            << " m_decompress_func() failed." << std::endl;
+      delete [] b;
+      return false;
+    }
+    m_fonts[a_name] = buffer(rsz,(const unsigned char*)b);
+    delete [] b;
+    return true;
+  }
+  void add_embedded_font(const std::string& a_name,unsigned int a_size,const unsigned char* a_buffer) {
+    //warning: we do not take ownership of a_buffer.
+    m_fonts[a_name] = buffer(a_size,a_buffer);
+  }
+  bool find_embedded_font(const std::string& a_name,unsigned int& a_size,const unsigned char*& a_buffer) {
+    std::map<std::string,buffer>::const_iterator it = m_fonts.find(a_name);
+    if(it==m_fonts.end()) {a_size = 0;a_buffer = 0;return false;}
+    a_size = (*it).second.size();
+    a_buffer = (*it).second.data();
+    if(!a_size || !a_buffer) {a_size = 0;a_buffer = 0;return false;}
+    return true;
+  }
+public:  
+  typedef bool(*font_finder)(const std::string&,std::string&);
+  void add_font_finder(font_finder a_finder) {m_finders.push_back(a_finder);}
+  bool find_font_with_finders(const std::string& a_name,std::string& a_font) {
+    inlib_vforcit(font_finder,m_finders,it) {
+      if((*it)(a_name,a_font)) return true;
+    }
+    a_font.clear();
+    return false;
+  }
+public:  
+  void set_decompress_func(decompress_func a_func) {m_decompress_func = a_func;}
+  decompress_func get_decompress_func() const {return m_decompress_func;}
+protected:
+  class buffer {
+  public:
+    buffer():m_size(0),m_buffer(0) {}
+    buffer(unsigned int a_size,const unsigned char* a_buffer)
+    :m_size(0)
+    ,m_buffer(0)
+    {
+      m_buffer = new unsigned char[a_size];
+      ::memcpy(m_buffer,a_buffer,a_size);
+      m_size = a_size;
+    }
+    virtual ~buffer() {
+      delete [] m_buffer;
+    }
+  public:
+    buffer(const buffer& a_from):m_size(0),m_buffer(0) {
+      if(a_from.m_size && a_from.m_buffer) {
+        m_buffer = new unsigned char[a_from.m_size];
+        ::memcpy(m_buffer,a_from.m_buffer,a_from.m_size);
+        m_size = a_from.m_size;
+      }
+    }
+    buffer& operator=(const buffer& a_from) {
+      delete [] m_buffer;
+      if(a_from.m_size && a_from.m_buffer) {
+        m_buffer = new unsigned char[a_from.m_size];
+        ::memcpy(m_buffer,a_from.m_buffer,a_from.m_size);
+        m_size = a_from.m_size;
+      }
+      return *this;
+    }
+  public:
+    unsigned int size() const {return m_size;}
+    const unsigned char* data() const {return m_buffer;}
+  private:
+    unsigned int m_size;
+    unsigned char* m_buffer;
+  };
+protected:
+  std::map<std::string,buffer> m_fonts;
+  std::vector<font_finder> m_finders;
+  decompress_func m_decompress_func;
+};
+
+}}
+
+#endif

@@ -1,0 +1,143 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+#include <exlib/shapelib>
+
+#include <inlib/mem>
+
+#include <inlib/sg/color>
+#include <inlib/app>
+#include <inlib/args>
+
+#include <iostream>
+#include <cstdlib>
+
+int main(int argc,char** argv) {
+
+#ifdef INLIB_MEM
+  inlib::mem::set_check_by_class(true);{
+#endif
+
+  //////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
+  inlib::args args(argc,argv);
+
+  bool spherical = args.is_arg("-planar")?false:true;
+  double radius = 1.001;
+
+  //////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
+  std::string default_name("ne_10m_coastline.shp");
+  std::string data_file;
+  if(inlib::is_mac_app(argv[0])) {
+    std::string exe_path;
+    if(!inlib::program_path(argv[0],exe_path)) {
+      std::cout << "can't get exe directory." << std::endl;
+      return EXIT_FAILURE;
+    }
+    std::string EXLIB_RES_DIR = exe_path+"/../Resources";
+    if(!inlib::put_env("EXLIB_RES_DIR",EXLIB_RES_DIR)) {
+      std::cout << "can't put_env EXLIB_RES_DIR." << std::endl;
+      return EXIT_FAILURE;
+    }  
+    data_file = exe_path+"/../Resources/"+default_name;
+    if(!inlib::file::exists(data_file)) {
+      std::cout << default_name << " not found." << std::endl;
+      return EXIT_FAILURE;
+    }
+  } else {
+    if(!args.file(data_file)) {
+      data_file = "../../data/"+default_name;
+      if(!inlib::file::exists(data_file)) {
+        data_file = "../../../data/"+default_name;
+        if(!inlib::file::exists(data_file)) {
+          std::cout << default_name + " not found." << std::endl;
+          return EXIT_FAILURE;
+        }
+      }
+    }
+  }
+
+//{bool is;
+//inlib::file::is_shp(data_file,is);
+//std::cout << "is " << is << std::endl;}
+
+  //////////////////////////////////////////////////////////
+  /// create scene graph ///////////////////////////////////
+  //////////////////////////////////////////////////////////
+  inlib::sg::separator* sep = new inlib::sg::separator;
+
+  inlib::sg::ortho* camera = new inlib::sg::ortho;
+  float z = 20;
+  camera->position.value(inlib::vec3f(0,0,z));
+  camera->height.value(10);
+  camera->znear.value(z*0.01);
+  camera->zfar.value(z*10);
+  camera->focal.value(z);
+  sep->add(camera);
+
+  inlib::sg::head_light* light = new inlib::sg::head_light;
+  light->direction = inlib::vec3f(1,-1,-10);
+  //light->on = false;
+  sep->add(light);
+
+  //////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////
+  inlib::sg::matrix* m = new inlib::sg::matrix;
+  if(spherical) m->set_rotate(1,0,0,-inlib::fhalf_pi());
+  sep->add(m);
+
+ {inlib::sg::color* color = new inlib::sg::color();
+  color->rgb = inlib::colorf_lightgrey();
+  sep->add(color);
+
+  //inlib::sg::sphere* sphere = new inlib::sg::sphere;
+  inlib::sg::icosahedron_sphere* sphere = new inlib::sg::icosahedron_sphere;
+  sphere->max_level = 5;
+  sep->add(sphere);}
+
+ {inlib::sg::color* color = new inlib::sg::color();
+  color->rgb = inlib::colorf_black();
+  sep->add(color);
+
+  inlib::sg::line_set* vtxs = new inlib::sg::line_set();
+  if(!exlib::shapelib_read(std::cout,data_file,spherical,radius,*vtxs)) {
+    std::cout << "can't read file " << data_file  << std::endl;
+    return EXIT_FAILURE;
+  }    
+  sep->add(vtxs);}
+
+  //////////////////////////////////////////////////////////
+  /// create the viewer, set the scene graph, steer : //////
+  //////////////////////////////////////////////////////////
+
+  exlib::EXLIB_SCREEN_MGR::session session(std::cout);
+  if(!session.is_valid()) return EXIT_FAILURE;
+
+  std::string title = "gui_shp_"+INLIB_CPP_TO_STRING(EXLIB_SCREEN_MGR);
+  exlib::EXLIB_SCREEN_MGR::gui_viewer viewer(session,0,0,700,500,title);
+  viewer.scene().add(sep); //give sep ownership to the viewer.
+  viewer.set_scene_camera(camera);
+  viewer.set_scene_light(light);
+  viewer.set_plane_viewer(false);
+  viewer.set_scene_light_on(false);
+
+  viewer.adapt_camera_to_scene();
+
+  viewer.hide_main_menu();
+  viewer.hide_meta_zone();
+  viewer.show_camera_menu();
+
+  viewer.show();
+
+  viewer.steer();
+
+#ifdef INLIB_MEM
+  }inlib::mem::balance(std::cout);
+  std::cout << "exlib::gui_shp_<driver> : exit(mem) ..." << std::endl;
+#endif
+
+  return EXIT_SUCCESS;
+}

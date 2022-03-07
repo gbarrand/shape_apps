@@ -1,0 +1,89 @@
+// Copyright (C) 2010, Guy Barrand. All rights reserved.
+// See the file exlib.license for terms.
+
+#ifndef exlib_shapelib
+#define exlib_shapelib
+
+#ifdef EXLIB_USE_NATIVE_SHAPELIB
+#include <shapefil.h>
+#else
+#include <ourex_shapefil.h>
+#endif
+
+#include <inlib/sg/line_set>
+#include <inlib/mathd>
+
+namespace exlib {
+
+inline bool shapelib_read(std::ostream& a_out,const std::string& a_path,bool a_spherical,double a_radius,inlib::sg::line_set& a_vtxs) {
+  SHPHandle hSHP = ::SHPOpen(a_path.c_str(),"rb");
+  if(hSHP==NULL) {
+    a_out << "exlib::shapelib_read : unable to open " << a_path << "." << std::endl;
+    return false;
+  }
+
+  int nShapeType, nEntities;
+  double adfMinBound[4], adfMaxBound[4];
+  ::SHPGetInfo( hSHP, &nEntities, &nShapeType, adfMinBound, adfMaxBound );
+
+  //::printf( "Shapefile Type: %s   # of Shapes: %d\n\n",::SHPTypeName( nShapeType ), nEntities );
+
+  int bValidate = 0;
+  int nInvalidCount = 0;
+  for(int i=0;i<nEntities;i++) {
+    SHPObject* psShape = ::SHPReadObject(hSHP,i);
+    if(psShape==NULL) {
+      a_out << "exlib::shapelib_read : unable to read shape " << i << ", terminating object reading." << std::endl;
+      break;
+    }
+    //if( psShape->nParts > 0 && psShape->panPartStart[0] != 0 ) {
+    //  ::fprintf( stderr, "panPartStart[0] = %d, not zero as expected.\n",psShape->panPartStart[0]);
+    //}
+
+    if( (psShape->nSHPType==SHPT_POLYGON) || (psShape->nSHPType==SHPT_ARC) ) {
+      for(int iPart=0;iPart<psShape->nParts;iPart++) {
+        int jbeg = psShape->panPartStart[iPart];
+        int jend = iPart==(psShape->nParts-1)?psShape->nVertices-1:psShape->panPartStart[iPart+1]-1;
+        std::vector<float> xyzs;
+        for(int j=jbeg;j<=jend;j++) {
+	  if(a_spherical) {
+            // padfX in [-180,180], padfY in [-90,90] (zero is equator,+90 = north pole), padfZ = 0. Attempt shperical coordinates :
+            double phi = psShape->padfX[j]*inlib::deg2rad();
+            double theta = inlib::half_pi()-psShape->padfY[j]*inlib::deg2rad();
+            double sin_theta = ::sin(theta);
+            double x = a_radius*sin_theta*::cos(phi);
+            double y = a_radius*sin_theta*::sin(phi);
+            double z = a_radius*::cos(theta);
+            xyzs.push_back(float(x));
+            xyzs.push_back(float(y));
+            xyzs.push_back(float(z));
+ 	  } else {
+            xyzs.push_back(float(psShape->padfX[j]));
+            xyzs.push_back(float(psShape->padfY[j]));
+            xyzs.push_back(float(psShape->padfZ[j]));
+	  }
+        }
+        a_vtxs.add(xyzs);
+      }
+
+    } else {
+      a_out << "exlib::shapelib_read : for shape " << i << ", type " << ::SHPTypeName(psShape->nSHPType) << " not handled." << std::endl;
+    }
+
+    ::SHPDestroyObject(psShape);
+  }
+
+  ::SHPClose(hSHP);
+
+  if(bValidate) {
+    ::printf( "%d object has invalid ring orderings.\n",nInvalidCount);
+  }
+
+  return true;
+}
+
+}
+
+//exlib_build_use inlib shapelib
+
+#endif

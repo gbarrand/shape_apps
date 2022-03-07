@@ -1,0 +1,471 @@
+#!/bin/sh -f
+
+# Copyright (C) 2010, Guy Barrand. All rights reserved.
+# See the file exlib.license for terms.
+
+bush_home=`dirname $0`/../../../../bush
+
+inlib_home=${bush_home}/../inexlib/inlib
+exlib_home=${bush_home}/../inexlib/exlib
+
+#set -x
+
+build_clean=no
+
+build_verbose=no
+build_res=no
+build_args=
+
+build_wasm=no
+
+what=""
+args=""
+while test $# -ge 1 ; do
+  case $1 in
+    -clean)  build_clean=yes;;
+
+    -x11)    echo "exlib/examples/cpp/build : -x11 not accepted";exit;;
+    -X11)    echo "exlib/examples/cpp/build : -X11 not accepted";exit;;
+    -cocoa)  echo "exlib/examples/cpp/build : -cocoa not accepted";exit;;
+    -ios)    echo "exlib/examples/cpp/build : -ios not accepted";exit;;
+    -iossim) echo "exlib/examples/cpp/build : -iossim not accepted";exit;;
+
+    -res)    build_res=yes;;
+    -v)      build_verbose=yes
+             args="${args} $1"
+             build_args="${build_args} $1"
+             ;;
+
+    -*) args="${args} $1"
+        build_args="${build_args} $1"
+        ;;
+     *) if [ $# = 1 ] ; then
+          what=$1
+        else
+          echo "exlib/examples/cpp/build : unknown option : $1"
+        fi
+        ;;
+  esac
+  shift
+done
+
+if [ ${build_clean} = "yes" ] ; then
+  echo "exlib/examples/cpp/build : do it by hand."
+  exit
+fi
+
+if [ ${build_res} = yes ] ; then
+  if [ ${build_verbose} = yes ] ; then
+    ${exlib_home}/mgr/build_res -v
+  else
+    ${exlib_home}/mgr/build_res
+  fi
+  exit
+fi
+
+if [ "${what}" = "" ] ; then
+  find . -maxdepth 1 -name '*.cpp' -exec ./build ${args} {} \;
+  exit
+fi
+if [ `echo ${what} | sed -e 's:\*::g'` != ${what} ] ; then
+  find . -maxdepth 1 -name ${what} -exec ./build ${args} {} \;
+  exit
+fi
+
+if [ ! -f "${what}" ] ; then
+  echo "exlib/examples/cpp/build : ${what} not found."
+  exit
+fi
+
+base_name=`basename ${what}`
+
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+suffix=
+if [ `echo ${base_name} | sed -e 's:\.cpp::g'` != ${base_name} ] ; then
+  suffix=cpp
+elif [ `echo ${base_name} | sed -e 's:\.c::g'` != ${base_name} ] ; then
+  suffix=c
+elif [ `echo ${base_name} | sed -e 's:\.f::g'` != ${base_name} ] ; then
+  suffix=f
+elif [ `echo ${base_name} | sed -e 's:\.mm::g'` != ${base_name} ] ; then
+  suffix=mm
+elif [ `echo ${base_name} | sed -e 's:\.ecpp::g'` != ${base_name} ] ; then
+  suffix=ecpp
+fi
+
+if [ "${suffix}" = "" ] ; then echo 'exlib/examples/cpp/build : suffix not treated';fi
+
+name="${base_name}"
+name=`echo ${name} | sed -e 's:\.cpp::g'`
+name=`echo ${name} | sed -e 's:\.c::g'`
+name=`echo ${name} | sed -e 's:\.f::g'`
+name=`echo ${name} | sed -e 's:\.mm::g'`
+name=`echo ${name} | sed -e 's:\.ecpp::g'`
+#name=`echo ${name} | sed -e 's:./::g'`
+
+if [ ${name} = "moc_Qt" ] ; then exit ;fi
+
+. ${bush_home}/on_where
+
+if [ ${base_name} = "LHCb_artist_offscreen.cpp" ] ; then
+  build_args="${build_args} -bin_inlib_gl -inlib_gl"
+  echo "exlib/examples/cpp/build : ${base_name} : enforce -bin_inlib_gl -inlib_gl."
+fi
+
+if [ `uname` = "Darwin" ] ; then
+  if [ ${base_name} = "LHCb_artist_X11.cpp" -o ${base_name} = "page_SoXt.cpp" -o ${base_name} = "blend_random_SoXt.cpp" -o ${base_name} = "page_SoGtk.cpp" -o ${base_name} = "cube_SoGtk.cpp" ] ; then
+    build_args="${build_args} -glx -bin_glx"
+    echo "exlib/examples/cpp/build : ${base_name} : enforce -glx -bin_glx."
+  fi
+fi
+
+if [ ${base_name} = "polyhedron_wasm.cpp" -o ${base_name} = "text_wasm.cpp" ] ; then
+  build_args="${build_args} -emcc"
+  build_wasm=yes
+fi
+
+build_geant4_10x=yes
+if [ ${base_name} = "clhep.cpp"  ] ; then
+  if [ ${on_my_win_xp} = yes ] ; then
+    echo 'exlib/examples/cpp/build : enforce geant4/95 on this machine.'
+    build_geant4_10x=no
+  else
+    if [ ${on_macpro4} = yes ] ; then #clang++ knows c++11, but we do not have libc++ here.
+      build_args="${build_args} -gnu"
+    fi	
+  fi
+fi
+
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+. ${bush_home}/exlib_header
+
+build_distrib=no
+
+if [ ${build_verbose} = yes -o ${build_verbose_name} = yes ] ; then
+  echo "exlib/examples/cpp/build : do ${name} ..."
+fi
+
+#//////////////////////////////////////////////////////////
+#/// look for //exlib_build_use in the ${what} file ///////
+#//////////////////////////////////////////////////////////
+auto_use_pack=exlib
+auto_use_file="${base_name}"
+. ${bush_home}/auto_use
+
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+#//////////////////////////////////////////////////////////
+
+if [ "${use_xerces}" = "yes" ] ; then
+  echo "exlib/examples/cpp/build : ourex xercesc not yet ready."
+  exit
+fi
+
+if [ "${use_cexpr}" = "yes" ] ; then
+  cppfiles="${cppfiles} ${inlib_home}/inlib/yacc/cexpr_lexer.cpp"
+  cppfiles="${cppfiles} ${inlib_home}/inlib/yacc/cexpr_eval.cpp"
+fi
+
+#/////////////////////////////////////////////////////////
+#/// not automatic flags /////////////////////////////////
+#/////////////////////////////////////////////////////////
+
+if [ ${build_no_gl} = "yes" ] ; then
+  if [ ${build_visual} = "yes" ] ; then
+    use_DirectX=yes
+    use_WGL=no
+  else	
+    use_GLX=no
+    use_AGL=no
+  fi
+fi
+
+if [ ${name} = "plugin_button_Qt" -o ${name} = "plugin_page_SoQt" ] ; then
+  cppfiles="${cppfiles} ${base_name}"
+  plugin=${name}
+fi
+
+if [ ${build_wasm} = yes ] ; then
+  app_wasm_src="${exlib_home}/exlib/wasm"
+    
+  if [ ${base_name} = "text_wasm.cpp" ] ; then
+    cppflags="${cppflags} --preload-file ./res"
+  fi
+fi
+
+if [ ${name} = "sg_povama_X11" ] ; then
+  if [ ${build_visual} = "yes" ] ; then
+    echo "exlib/examples/cpp/build : WARNING : today -DEXLIB_HAS_VBO not supported."
+  else
+    cppflags="${cppflags} -DEXLIB_HAS_VBO"
+  fi
+fi
+
+if [ ${name} = "h1d_spy" ] ; then
+  cppfiles="${cppfiles} ${exlib_home}/exlib/spy/inlib_swig_py.cpp"
+  build_res=yes
+fi
+
+if [ ${name} = "plotter_spy_screen" ] ; then
+  build_res=yes
+fi
+
+if [ ${name} = "LHCb_artist_offscreen" ] ; then
+  if [ ${build_visual} = "yes" ] ; then
+    use_Windows=yes
+  fi
+fi
+
+if [ ${build_res} = yes ] ; then
+  if [ ${build_verbose} = yes ] ; then
+    ${exlib_home}/mgr/build_res -v
+  else
+    ${exlib_home}/mgr/build_res
+  fi
+fi
+
+#/////////////////////////////////////////////////////////
+#/////////////////////////////////////////////////////////
+#/////////////////////////////////////////////////////////
+
+# -Wshadow is a pain with CLHEP.
+# With -pedantic and coin3d/3.1.3 and G4_cppflags, we have the error :
+#   HEPVis/source/SoSFPolyhedron.cxx:7: error: extra ~;~
+#cppflags="${G4_cppflags} ${cppflags}"
+
+#////////////////////////////////////
+#////////////////////////////////////
+#////////////////////////////////////
+
+if [ "${use_GL}" = "yes" ] ; then
+  if [ `uname` = "Darwin" ] ; then
+    use_AGL=yes      
+  else
+    if [ ${build_visual} = "yes" ] ; then
+      use_WGL=yes      
+    else
+      use_GLX=yes
+    fi
+  fi
+fi
+
+if [ "${use_Windows}" = "yes" ] ; then
+  if [ ${on_wsl} = "yes" ] ; then
+    cppflags="${cppflags} -I${exlib_home}/exlib/Windows"
+  fi	
+fi
+
+. ${bush_home}/use/inlib
+. ${bush_home}/use/exlib
+
+#/////////////////////////////////
+#/// gui and windowing : /////////
+#/////////////////////////////////
+. ${bush_home}/use/CoinXt
+. ${bush_home}/use/CoinWin
+. ${bush_home}/use/CoinGtk
+. ${bush_home}/use/CoinQt
+. ${bush_home}/use/CoinNextStep
+
+. ${bush_home}/use/glfw
+. ${bush_home}/use/imgui
+
+. ${bush_home}/use/wx
+
+. ${bush_home}/use/gtkglarea
+. ${bush_home}/use/gtk
+
+. ${bush_home}/use/Xm
+. ${bush_home}/use/XmOpenGLArea
+
+. ${bush_home}/use/Xaw
+. ${bush_home}/use/Xt
+. ${bush_home}/use/Xmu
+. ${bush_home}/use/Xi
+
+. ${bush_home}/use/Qt
+
+. ${bush_home}/use/glut
+
+. ${bush_home}/use/GLUX
+. ${bush_home}/use/GLX  # before X11
+. ${bush_home}/use/X11
+
+. ${bush_home}/use/WGLU
+. ${bush_home}/use/WGL
+. ${bush_home}/use/Windows
+. ${bush_home}/use/ctl32
+. ${bush_home}/use/DirectX
+
+. ${bush_home}/use/AGLU
+. ${bush_home}/use/AGL
+. ${bush_home}/use/Cocoa
+
+. ${bush_home}/use/SDL2
+. ${bush_home}/use/SDL
+
+. ${bush_home}/use/metal
+
+#/////////////////////////////////
+#/// graphics : //////////////////
+#/////////////////////////////////
+. ${bush_home}/use/HEPVis  # needs png jpeg freetype
+. ${bush_home}/use/CoinGL  # must be after use_X11 (because of GLX)
+
+. ${bush_home}/use/Xpm
+
+#/////////////////////////////////
+#/// over C/C++ only /////////////
+#/////////////////////////////////
+. ${bush_home}/use/gl2ps
+. ${bush_home}/use/csz
+
+. ${bush_home}/use/fontconfig
+. ${bush_home}/use/iconv
+. ${bush_home}/use/intl
+. ${bush_home}/use/CoreFoundation
+
+. ${bush_home}/use/freetype
+. ${bush_home}/use/jpeg
+. ${bush_home}/use/expat
+. ${bush_home}/use/spiapp
+. ${bush_home}/use/SOPI
+. ${bush_home}/use/SOPHYA
+. ${bush_home}/use/sophya_dev
+. ${bush_home}/use/cfitsio
+. ${bush_home}/use/hdf5
+
+. ${bush_home}/use/zip
+. ${bush_home}/use/png
+. ${bush_home}/use/zlib
+. ${bush_home}/use/sqlite
+. ${bush_home}/use/glutess
+. ${bush_home}/use/boost
+. ${bush_home}/use/graphviz
+. ${bush_home}/use/dcmtk
+. ${bush_home}/use/gsl
+. ${bush_home}/use/gmp
+. ${bush_home}/use/arb
+. ${bush_home}/use/flint
+. ${bush_home}/use/yajl
+. ${bush_home}/use/shapelib
+
+. ${bush_home}/use/AIDA
+. ${bush_home}/use/aida_config
+
+if [ ${build_geant4_10x} = yes ] ; then
+  . ${bush_home}/use/geant4_10_03_p01
+else
+  . ${bush_home}/use/geant4
+fi
+
+. ${bush_home}/use/cern_root # :-(
+. ${bush_home}/use/pythia8
+. ${bush_home}/use/Getline
+. ${bush_home}/use/Python
+. ${bush_home}/use/lua
+. ${bush_home}/use/cling
+. ${bush_home}/use/mpi
+
+# ////////////////////////////////////
+# ////////////////////////////////////
+# ////////////////////////////////////
+. ${bush_home}/use/socket
+. ${bush_home}/use/thread
+. ${bush_home}/use/dl
+. ${bush_home}/use/util
+
+# ////////////////////////////////////
+# /// Qt/mocs : //////////////////////
+# ////////////////////////////////////
+
+# done here because we need moc_exe defined in bush/use/[Qt,qt5].
+
+if [ ${name} = "page_SoQt" -o ${name} = "plugin_page_SoQt" ] ; then
+  items="QPageViewer q3_hbox q3_vbox q3_frame"
+  for item in ${items} ; do
+    if [ ${build_visual} = "yes" ] ; then  # the qt/5.12.3 moc does not take file without .h !
+      /bin/cp ../../exlib/Qt/${item} ../../exlib/Qt/${item}.h
+      if [ ${build_verbose} = yes ] ; then
+        echo "exlib/examples/cpp/build : moc ../../exlib/Qt/${item}.h"
+      fi	  
+      ${moc_exe} -o moc_${item}.cpp ../../exlib/Qt/${item}.h
+      to_rm="${to_rm} ../../exlib/Qt/${item}.h"
+    else	
+      if [ ${build_verbose} = yes ] ; then
+        echo "exlib/examples/cpp/build : moc ../../exlib/Qt/${item}"
+      fi	  
+      ${moc_exe} -o moc_${item}.cpp ../../exlib/Qt/${item}
+    fi
+    cppfiles="${cppfiles} moc_${item}.cpp"
+    to_rm="${to_rm} moc_${item}.cpp"
+  done	
+fi
+
+if [ ${name} = "button_Qt" -o ${name} = "plugin_button_Qt" ] ; then
+  cppfiles="${cppfiles} moc_button_Qt.cpp"
+  if [ ${build_verbose} = yes ] ; then
+    echo "exlib/examples/cpp/build : moc button_Qt.h"
+  fi	  
+  ${moc_exe} -o moc_button_Qt.cpp button_Qt.h
+  to_rm="${to_rm} moc_button_Qt.cpp"
+fi
+
+if [ ${name} = "GL_Qt" ] ; then
+  cppfiles="${cppfiles} moc_GL_Qt.cpp"
+  if [ ${build_verbose} = yes ] ; then
+    echo "exlib/examples/cpp/build : moc GL_Qt.h"
+  fi	  
+  ${moc_exe} -o moc_GL_Qt.cpp GL_Qt.h
+  to_rm="${to_rm} moc_GL_Qt.cpp"
+fi
+
+#if [ ${name} = "plotter_Qt" -o ${name} = "polyhedron_Qt" ] ; then
+#  cppfiles="${cppfiles} moc_glarea.cpp"
+#  if [ ${build_verbose} = yes ] ; then
+#    echo "exlib/examples/cpp/build : moc ../../exlib/Qt/glarea"
+#  fi	  
+#  ${moc_exe} -o moc_glarea.cpp ../../exlib/Qt/glarea
+#  to_rm="${to_rm} moc_glarea.cpp"
+
+#  cppfiles="${cppfiles} moc_sg_viewer.cpp"
+#  if [ ${build_verbose} = yes ] ; then
+#    echo "exlib/examples/cpp/build : moc ../../exlib/Qt/sg_viewer"
+#  fi	  
+#  ${moc_exe} -o moc_sg_viewer.cpp ../../exlib/Qt/sg_viewer
+#  to_rm="${to_rm} moc_sg_viewer.cpp"
+#fi
+
+# ////////////////////////////////////
+# ////////////////////////////////////
+# ////////////////////////////////////
+
+if [ "${plugin}" != "" ] ; then
+  . ${bush_home}/compile
+  . ${bush_home}/plugin
+else
+  app=${name}
+  app_src=${base_name}
+  app_exe=${name}
+
+  . ${bush_home}/application
+
+  if [ ${build_darwin_app} = yes ] ; then
+    darwin_app_libs=
+    . ${bush_home}/darwin_app
+  fi
+
+  if [ ${build_wasm} = yes ] ; then
+    sed -e "s:EXLIB_APP:${name}:g" ${app_wasm_src}/index.html > ${build_path}/index.html
+    /bin/cp ../../data/emscripten_32.png  ${build_path}/icon_32.png
+    /bin/cp ../../data/emscripten_114.png ${build_path}/icon_114.png
+  fi
+
+fi
+
+/bin/rm -f ${objs}
+/bin/rm -f ${to_rm}

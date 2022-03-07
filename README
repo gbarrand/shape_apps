@@ -1,0 +1,16 @@
+
+ To build :
+   cd ./inexlib/exlib/examples/cpp
+   ./build rshp.cpp
+   ./build gui_shp_X11.cpp
+ On a Mac:   
+   ./build gui_shp_Cocoa.mm
+
+ To have a light traceback, use the option -v as in:
+   ./build -v <app>.cpp
+
+ To run :
+   ./bin_[gnu,clang]/rshp
+   ./bin_[gnu,clang]/gui_shp_X11
+ On a Mac:   
+   open ./bin_clang/gui_shp_Cocoa.app

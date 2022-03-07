@@ -1,0 +1,10 @@
+# Copyright (C) 2010, Guy Barrand. All rights reserved.
+# See the file bush.license for terms.
+if [ "${use_Cocoa}" = "yes" ] ; then
+  if [ `uname` = Darwin ] ; then
+    libs="${libs} -framework Cocoa"
+  else
+    echo 'bush/use/Cocoa : not on Darwin.'
+    exit
+  fi
+fi
